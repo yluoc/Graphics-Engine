@@ -8,7 +8,7 @@
 // Static handle counters
 // ─────────────────────────────────────────────
 engine::gpu::BufferHandle engine::gpu::VertexBuffer::s_nextHandle = 1;
-engine::gpu::BufferHandle engine::gpu::IndexBuffer::s_nextHandle = 1;
+engine::gpu::BufferHandle engine::gpu::IndexBuffer::s_nextHandle  = 1;
 
 // ═══════════════════════════════════════════════
 // VertexBuffer
@@ -16,12 +16,12 @@ engine::gpu::BufferHandle engine::gpu::IndexBuffer::s_nextHandle = 1;
 void engine::gpu::VertexBuffer::create(size_t stride, size_t initialCapacity) {
     assert(stride > 0);
     release();
-    m_stride = stride;
-    m_count = 0;
+    m_stride   = stride;
+    m_count    = 0;
     m_capacity = 0;
-    m_data = nullptr;
-    m_dirty = false;
-    m_handle = s_nextHandle++;
+    m_data     = nullptr;
+    m_dirty    = false;
+    m_handle   = s_nextHandle++;
     if (initialCapacity > 0) ensureCapacity(initialCapacity);
 }
 
@@ -38,7 +38,7 @@ void engine::gpu::VertexBuffer::append(const void* data, size_t byteCount) {
     ensureCapacity(m_count + newElements);
     std::memcpy(static_cast<char*>(m_data) + m_count * m_stride, data, byteCount);
     m_count += newElements;
-    m_dirty = true;
+    m_dirty  = true;
 }
 
 void* engine::gpu::VertexBuffer::mapRange(size_t startIndex, size_t count) {
@@ -59,9 +59,9 @@ void engine::gpu::VertexBuffer::release() {
         engine::memory::alignedFree(m_data);
         m_data = nullptr;
     }
-    m_count = 0;
+    m_count    = 0;
     m_capacity = 0;
-    m_handle = InvalidBuffer;
+    m_handle   = InvalidBuffer;
 }
 
 void engine::gpu::VertexBuffer::ensureCapacity(size_t needed) {
@@ -76,7 +76,7 @@ void engine::gpu::VertexBuffer::ensureCapacity(size_t needed) {
         std::memcpy(newBuf, m_data, m_count * m_stride);
     }
     engine::memory::alignedFree(m_data);
-    m_data = newBuf;
+    m_data     = newBuf;
     m_capacity = newCap;
 }
 
@@ -102,7 +102,7 @@ engine::gpu::VertexBuffer& engine::gpu::VertexBuffer::operator=(VertexBuffer&& o
 void engine::gpu::IndexBuffer::create(IndexFormat fmt, size_t initialCapacity) {
     release();
     m_format = fmt;
-    m_count = 0;
+    m_count  = 0;
     m_handle = s_nextHandle++;
     if (initialCapacity > 0) {
         m_data.resize(initialCapacity * indexSize());
@@ -111,14 +111,14 @@ void engine::gpu::IndexBuffer::create(IndexFormat fmt, size_t initialCapacity) {
 
 void engine::gpu::IndexBuffer::upload(const uint16_t* indices, size_t count) {
     m_format = IndexFormat::U16;
-    m_count = count;
+    m_count  = count;
     m_data.resize(count * 2);
     std::memcpy(m_data.data(), indices, count * 2);
 }
 
 void engine::gpu::IndexBuffer::upload(const uint32_t* indices, size_t count) {
     m_format = IndexFormat::U32;
-    m_count = count;
+    m_count  = count;
     m_data.resize(count * 4);
     std::memcpy(m_data.data(), indices, count * 4);
 }
@@ -152,11 +152,11 @@ void engine::gpu::Mesh::init(const MeshDescriptor& desc) {
 
     size_t stride = 12; // default
     switch (desc.vertexFormat) {
-        case VertexFormatType::Position: stride = VertexPosition::Stride; break;
-        case VertexFormatType::PositionNormal: stride = VertexPositionNormal::Stride; break;
-        case VertexFormatType::PositionNormalUV: stride = VertexPositionNormalUV::Stride; break;
-        case VertexFormatType::PositionColor: stride = VertexPositionColor::Stride; break;
-        case VertexFormatType::PositionNormalUVTangent: stride = VertexPBR::Stride; break;
+        case VertexFormatType::Position:              stride = VertexPosition::Stride;            break;
+        case VertexFormatType::PositionNormal:        stride = VertexPositionNormal::Stride;      break;
+        case VertexFormatType::PositionNormalUV:      stride = VertexPositionNormalUV::Stride;    break;
+        case VertexFormatType::PositionColor:         stride = VertexPositionColor::Stride;       break;
+        case VertexFormatType::PositionNormalUVTangent: stride = VertexPBR::Stride;               break;
     }
     m_vertexBuffer.create(stride);
     m_indexBuffer.create(IndexFormat::U32);
@@ -166,8 +166,8 @@ void engine::gpu::Mesh::computeBounds() {
     if (m_vertexBuffer.empty()) return;
 
     const char* base = static_cast<const char*>(m_vertexBuffer.data());
-    size_t stride = m_vertexBuffer.stride();
-    size_t count = m_vertexBuffer.count();
+    size_t stride    = m_vertexBuffer.stride();
+    size_t count     = m_vertexBuffer.count();
 
     math::Vec3 bMin{1e30f, 1e30f, 1e30f};
     math::Vec3 bMax{-1e30f, -1e30f, -1e30f};
@@ -209,14 +209,6 @@ void engine::gpu::VertexManager::destroyMesh(MeshHandle handle) {
 engine::gpu::Mesh* engine::gpu::VertexManager::getMesh(MeshHandle handle) {
     auto it = m_meshes.find(handle);
     return (it != m_meshes.end()) ? &it->second : nullptr;
-}
-
-void engine::gpu::VertexManager::flushUploads() {
-    for (auto& [handle, mesh] : m_meshes) {
-        if (mesh.vertexBuffer().dirty()) {
-            mesh.vertexBuffer().finalize();
-        }
-    }
 }
 
 size_t engine::gpu::VertexManager::totalVertexCount() const {

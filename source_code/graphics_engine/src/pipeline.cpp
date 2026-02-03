@@ -27,7 +27,7 @@ void RenderPipeline::setThreadCount(unsigned count) {
 NodeHandle RenderPipeline::createNode(const std::string& name) {
     NodeHandle h = m_nextNode++;
     SceneNode& node = m_nodes[h];
-    node.name = name;
+    node.name  = name;
     node.dirty = true;
     m_rootNodes.push_back(h);
     return h;
@@ -62,7 +62,7 @@ SceneNode* RenderPipeline::getNode(NodeHandle handle) {
 }
 
 void RenderPipeline::setParent(NodeHandle child, NodeHandle parent) {
-    SceneNode* childNode = getNode(child);
+    SceneNode* childNode  = getNode(child);
     SceneNode* parentNode = getNode(parent);
     if (!childNode || !parentNode) return;
 
@@ -87,7 +87,7 @@ void RenderPipeline::setParent(NodeHandle child, NodeHandle parent) {
 // Lights
 // ═══════════════════════════════════════════════
 void RenderPipeline::addLight(const Light& light) { m_lights.push_back(light); }
-void RenderPipeline::clearLights() { m_lights.clear(); }
+void RenderPipeline::clearLights()                { m_lights.clear(); }
 
 
 // ═══════════════════════════════════════════════
@@ -99,27 +99,13 @@ MaterialHandle RenderPipeline::createMaterial(const PBRMaterial& mat) {
     return h;
 }
 
-ShaderHandle RenderPipeline::registerShader(const ShaderSource& src) {
-    ShaderHandle h = m_nextShader++;
-    m_shaders[h] = src;
-    return h;
-}
-
-
-// ═══════════════════════════════════════════════
-// Shadow Map
-// ═══════════════════════════════════════════════
-void RenderPipeline::setShadowMap(const ShadowMap& shadow) {
-    m_shadowMap = shadow;
-}
-
 
 // ═══════════════════════════════════════════════
 // Camera
 // ═══════════════════════════════════════════════
 void RenderPipeline::setCamera(const Vec3& eye, const Vec3& target, const Vec3& up,
                                float fovDeg, float aspect, float nearP, float farP) {
-    m_cameraPos = eye;
+    m_cameraPos  = eye;
     m_viewMatrix = Mat4::lookAt(eye, target, up);
     m_projMatrix = Mat4::perspective(radians(fovDeg), aspect, nearP, farP);
 }
@@ -193,12 +179,12 @@ void RenderPipeline::computeFrustumPlanes() {
         return { Vec3(p.x, p.y, p.z), p.w };
     };
 
-    m_frustumPlanes[0] = makePlane({ r3.x+r0.x, r3.y+r0.y, r3.z+r0.z, r3.w+r0.w }); // Left
-    m_frustumPlanes[1] = makePlane({ r3.x-r0.x, r3.y-r0.y, r3.z-r0.z, r3.w-r0.w }); // Right
-    m_frustumPlanes[2] = makePlane({ r3.x+r1.x, r3.y+r1.y, r3.z+r1.z, r3.w+r1.w }); // Bottom
-    m_frustumPlanes[3] = makePlane({ r3.x-r1.x, r3.y-r1.y, r3.z-r1.z, r3.w-r1.w }); // Top
-    m_frustumPlanes[4] = makePlane({ r3.x+r2.x, r3.y+r2.y, r3.z+r2.z, r3.w+r2.w }); // Near
-    m_frustumPlanes[5] = makePlane({ r3.x-r2.x, r3.y-r2.y, r3.z-r2.z, r3.w-r2.w }); // Far
+    m_frustumPlanes[0] = makePlane({ r3.x+r0.x, r3.y+r0.y, r3.z+r0.z, r3.w+r0.w });  // Left
+    m_frustumPlanes[1] = makePlane({ r3.x-r0.x, r3.y-r0.y, r3.z-r0.z, r3.w-r0.w });  // Right
+    m_frustumPlanes[2] = makePlane({ r3.x+r1.x, r3.y+r1.y, r3.z+r1.z, r3.w+r1.w });  // Bottom
+    m_frustumPlanes[3] = makePlane({ r3.x-r1.x, r3.y-r1.y, r3.z-r1.z, r3.w-r1.w });  // Top
+    m_frustumPlanes[4] = makePlane({ r3.x+r2.x, r3.y+r2.y, r3.z+r2.z, r3.w+r2.w });  // Near
+    m_frustumPlanes[5] = makePlane({ r3.x-r2.x, r3.y-r2.y, r3.z-r2.z, r3.w-r2.w });  // Far
 
     // Normalize each plane
     for (auto& p : m_frustumPlanes) {
@@ -206,7 +192,7 @@ void RenderPipeline::computeFrustumPlanes() {
         if (len > 1e-10f) {
             float inv = 1.f / len;
             p.normal *= inv;
-            p.dist *= inv;
+            p.dist   *= inv;
         }
     }
 }
@@ -221,7 +207,7 @@ bool RenderPipeline::aabbInsideFrustum(const Vec3& min, const Vec3& max) const {
         corner.z = (p.normal.z > 0.f) ? max.z : min.z;
 
         float dist = p.normal.dot(corner) + p.dist;
-        if (dist < 0.f) return false; // entirely outside this plane
+        if (dist < 0.f) return false;  // entirely outside this plane
     }
     return true;
 }
@@ -263,7 +249,7 @@ void RenderPipeline::frustumCull() {
         }
     }
 
-    m_stats.culledNodes = m_stats.totalNodes - static_cast<uint32_t>(m_visibleNodes.size());
+    m_stats.culledNodes  = m_stats.totalNodes - static_cast<uint32_t>(m_visibleNodes.size());
     m_stats.visibleNodes = static_cast<uint32_t>(m_visibleNodes.size());
 }
 
@@ -299,15 +285,15 @@ void RenderPipeline::buildDrawCalls() {
 
         for (auto& [meshH, meshNodes] : meshGroups) {
             DrawCall dc;
-            dc.mesh = meshH;
+            dc.mesh     = meshH;
             dc.material = mat;
 
             if (meshNodes.size() == 1) {
                 // Single instance — direct draw
                 SceneNode* n = getNode(meshNodes[0]);
-                dc.worldTransform = n->worldTransform;
-                dc.normalMatrix = (n->worldTransform.inverse3x3()).transpose();
-                dc.instanceCount = 1;
+                dc.worldTransform  = n->worldTransform;
+                dc.normalMatrix    = (n->worldTransform.inverse3x3()).transpose();
+                dc.instanceCount   = 1;
                 dc.instanceTransforms = nullptr;
             } else {
                 // Multiple instances — instanced draw.
@@ -321,9 +307,9 @@ void RenderPipeline::buildDrawCalls() {
                     if (n) instanceBuf.push_back(n->worldTransform);
                 }
                 dc.worldTransform      = instanceBuf[0]; // "base" transform
-                dc.normalMatrix = Mat4::identity();
-                dc.instanceCount = static_cast<uint32_t>(instanceBuf.size());
-                dc.instanceTransforms = instanceBuf.data();
+                dc.normalMatrix        = Mat4::identity();
+                dc.instanceCount       = static_cast<uint32_t>(instanceBuf.size());
+                dc.instanceTransforms  = instanceBuf.data();
             }
 
             batch.calls.push_back(dc);
@@ -370,7 +356,7 @@ void RenderPipeline::submit() {
 
     // Partition batches across threads
     size_t batchesPerThread = m_batches.size() / numThreads;
-    size_t remainder = m_batches.size() % numThreads;
+    size_t remainder        = m_batches.size() % numThreads;
 
     std::vector<std::future<uint64_t>> futures;
     futures.reserve(numThreads);

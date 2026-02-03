@@ -18,17 +18,17 @@ namespace gpu {
 // the GPU can consume it with minimal padding / wasted bandwidth.
 // ═══════════════════════════════════════════════
 enum class VertexFormatType : uint8_t {
-    Position, // Vec3              (12 bytes)
-    PositionNormal, // Vec3 + Vec3       (24 bytes)
-    PositionNormalUV, // Vec3 + Vec3 + Vec2 (32 bytes)  ← standard mesh vertex
-    PositionColor, // Vec3 + Vec4       (28 bytes)
+    Position,          // Vec3              (12 bytes)
+    PositionNormal,    // Vec3 + Vec3       (24 bytes)
+    PositionNormalUV,  // Vec3 + Vec3 + Vec2 (32 bytes)  ← standard mesh vertex
+    PositionColor,     // Vec3 + Vec4       (28 bytes)
     PositionNormalUVTangent // Vec3 + Vec3 + Vec2 + Vec3 (44 bytes) ← PBR vertex
 };
 
 // ── Position only (debug / wireframe) ──
 struct VertexPosition {
     math::Vec3 pos;
-    static constexpr size_t Stride = sizeof(math::Vec3); // 12 bytes
+    static constexpr size_t Stride = sizeof(math::Vec3);  // 12 bytes
 };
 
 // ── Position + Normal ──
@@ -112,23 +112,23 @@ public:
     void release();
 
     // Accessors
-    BufferHandle handle() const { return m_handle; }
-    size_t stride() const { return m_stride; }
-    size_t count() const { return m_count; }
-    size_t byteSize() const { return m_count * m_stride; }
-    bool empty() const { return m_count == 0; }
-    const void* data() const { return m_data; }
-    bool dirty() const { return m_dirty; }
+    BufferHandle handle()   const { return m_handle; }
+    size_t       stride()   const { return m_stride; }
+    size_t       count()    const { return m_count; }
+    size_t       byteSize() const { return m_count * m_stride; }
+    bool         empty()    const { return m_count == 0; }
+    const void*  data()     const { return m_data; }
+    bool         dirty()    const { return m_dirty; }
 
 private:
     void ensureCapacity(size_t needed);
 
     BufferHandle m_handle;
-    size_t m_stride;
-    size_t m_count;
-    void* m_data;
-    size_t m_capacity;
-    bool m_dirty = false;
+    size_t       m_stride;
+    size_t       m_count;
+    void*        m_data;
+    size_t       m_capacity;
+    bool         m_dirty = false;
 
     static BufferHandle s_nextHandle;
 };
@@ -154,18 +154,18 @@ public:
     void upload(const uint32_t* indices, size_t count);
     void release();
 
-    BufferHandle handle() const { return m_handle; }
-    size_t count() const { return m_count; }
-    IndexFormat format() const { return m_format; }
-    size_t indexSize() const { return m_format == IndexFormat::U16 ? 2 : 4; }
-    size_t byteSize() const { return m_count * indexSize(); }
-    const void* data() const { return m_data.data(); }
+    BufferHandle handle()      const { return m_handle; }
+    size_t       count()       const { return m_count; }
+    IndexFormat  format()      const { return m_format; }
+    size_t       indexSize()   const { return m_format == IndexFormat::U16 ? 2 : 4; }
+    size_t       byteSize()    const { return m_count * indexSize(); }
+    const void*  data()        const { return m_data.data(); }
 
 private:
-    BufferHandle m_handle;
-    size_t m_count;
-    IndexFormat m_format;
-    std::vector<char> m_data;
+    BufferHandle       m_handle;
+    size_t             m_count;
+    IndexFormat        m_format;
+    std::vector<char>  m_data;
 
     static BufferHandle s_nextHandle;
 };
@@ -179,11 +179,11 @@ enum class PrimitiveType : uint8_t {
 };
 
 struct MeshDescriptor {
-    std::string name;
-    VertexFormatType vertexFormat;
-    PrimitiveType primitiveType = PrimitiveType::Triangles;
-    math::Vec3 boundsMin;
-    math::Vec3 boundsMax;
+    std::string        name;
+    VertexFormatType   vertexFormat;
+    PrimitiveType      primitiveType = PrimitiveType::Triangles;
+    math::Vec3         boundsMin;
+    math::Vec3         boundsMax;
 };
 
 class Mesh {
@@ -193,10 +193,10 @@ public:
 
     void init(const MeshDescriptor& desc);
 
-    VertexBuffer& vertexBuffer() { return m_vertexBuffer; }
-    const VertexBuffer& vertexBuffer() const { return m_vertexBuffer; }
-    IndexBuffer& indexBuffer() { return m_indexBuffer; }
-    const IndexBuffer& indexBuffer() const { return m_indexBuffer; }
+    VertexBuffer&        vertexBuffer()        { return m_vertexBuffer; }
+    const VertexBuffer&  vertexBuffer()  const { return m_vertexBuffer; }
+    IndexBuffer&         indexBuffer()         { return m_indexBuffer;  }
+    const IndexBuffer&   indexBuffer()   const { return m_indexBuffer;  }
     const MeshDescriptor& descriptor() const { return m_desc; }
 
     // Compute AABB from vertex data
@@ -206,8 +206,8 @@ public:
 
 private:
     MeshDescriptor m_desc;
-    VertexBuffer m_vertexBuffer;
-    IndexBuffer m_indexBuffer;
+    VertexBuffer   m_vertexBuffer;
+    IndexBuffer    m_indexBuffer;
 };
 
 
@@ -226,17 +226,14 @@ public:
 
     // Create / destroy meshes
     MeshHandle createMesh(const MeshDescriptor& desc);
-    void destroyMesh(MeshHandle handle);
-    Mesh* getMesh(MeshHandle handle);
-
-    // Upload all dirty buffers in one batch (call once per frame)
-    void flushUploads();
+    void       destroyMesh(MeshHandle handle);
+    Mesh*      getMesh(MeshHandle handle);
 
     // Stats
-    size_t meshCount() const { return m_meshes.size(); }
-    size_t totalVertexCount() const;
-    size_t totalIndexCount() const;
-    size_t totalByteSize() const;
+    size_t meshCount()         const { return m_meshes.size(); }
+    size_t totalVertexCount()  const;
+    size_t totalIndexCount()   const;
+    size_t totalByteSize()     const;
 
 private:
     VertexManager() = default;

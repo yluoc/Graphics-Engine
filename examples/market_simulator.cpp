@@ -6,7 +6,6 @@
 #include <random>
 #include <algorithm>
 #include <sstream>
-
 #include "math/simd_math.h"
 #include "memory/allocator.h"
 #include "gpu/vertex_manager.h"
@@ -26,32 +25,32 @@ enum class OrderSide { BUY, SELL };
 enum class OrderType { MARKET, LIMIT };
 
 struct Order {
-    int id;
-    OrderSide side;
-    OrderType type;
-    double price;
-    int quantity;
-    double timestamp;
-    int algoId; // which algorithm placed it
+    int         id;
+    OrderSide   side;
+    OrderType   type;
+    double      price;
+    int         quantity;
+    double      timestamp;
+    int         algoId;      // which algorithm placed it
 };
 
 struct Trade {
     double price;
-    int quantity;
+    int    quantity;
     double timestamp;
 };
 
 struct PriceBar {
     double open, high, low, close;
-    int volume;
+    int    volume;
     double timestamp;
 };
 
 // Order book (simplified)
 struct OrderBook {
-    std::vector<Order> bids; // sorted descending by price
-    std::vector<Order> asks; // sorted ascending by price
-
+    std::vector<Order> bids;   // sorted descending by price
+    std::vector<Order> asks;   // sorted ascending by price
+    
     double getBestBid() const { return bids.empty() ? 0.0 : bids.front().price; }
     double getBestAsk() const { return asks.empty() ? 0.0 : asks.front().price; }
     double getMidPrice() const { return (getBestBid() + getBestAsk()) / 2.0; }
@@ -71,23 +70,23 @@ enum class AlgoType {
 };
 
 struct TradingAlgo {
-    int id;
-    AlgoType type;
+    int        id;
+    AlgoType   type;
     std::string name;
-    Vec3 color; // for visualization
-
+    Vec3       color;          // for visualization
+    
     // State
-    double cash;
-    int position; // shares held (can be negative for short)
-    double pnl; // profit/loss
-
+    double     cash;
+    int        position;       // shares held (can be negative for short)
+    double     pnl;            // profit/loss
+    
     // Stats
-    int ordersPlaced;
-    int tradesExecuted;
-
+    int        ordersPlaced;
+    int        tradesExecuted;
+    
     // Visual
     NodeHandle node;
-
+    
     TradingAlgo(int id, AlgoType type, std::string name, Vec3 color)
         : id(id), type(type), name(name), color(color),
           cash(100000.0), position(0), pnl(0.0),
@@ -326,9 +325,9 @@ private:
     
     double currentTime;
     double currentPrice;
-    int nextOrderId;
-    int tradeCount;
-
+    int    nextOrderId;
+    int    tradeCount;
+    
     std::deque<double> priceHistory;
     OrderBook orderBook;
 };
@@ -493,8 +492,8 @@ int main() {
     // ─────────────────────────────────────────────
     // Simulation Loop
     // ─────────────────────────────────────────────
-    const int totalFrames = 1000;
-    const float deltaTime = 0.1f; // 10 ticks per second
+    const int   totalFrames = 1000;
+    const float deltaTime   = 0.1f;   // 10 ticks per second
     
     std::cout << "Simulating " << totalFrames << " frames (100 seconds of market activity)...\n\n";
     
@@ -548,7 +547,6 @@ int main() {
             pipeline.buildDrawCalls();
             pipeline.sortBatches();
             pipeline.submit();
-            vm.flushUploads();
         }
         
         // ── Print status every 100 frames ──
