@@ -56,7 +56,7 @@ void engine::gpu::VertexBuffer::finalize() {
 
 void engine::gpu::VertexBuffer::release() {
     if (m_data) {
-        engine::memory::alignedFree(m_data);
+        engine::memory::fast::alignedFree(m_data);
         m_data = nullptr;
     }
     m_count    = 0;
@@ -69,13 +69,13 @@ void engine::gpu::VertexBuffer::ensureCapacity(size_t needed) {
     size_t newCap = m_capacity ? m_capacity : 64;
     while (newCap < needed) newCap *= 2;
 
-    void* newBuf = engine::memory::alignedAlloc(newCap * m_stride, 64);
+    void* newBuf = engine::memory::fast::alignedAlloc(newCap * m_stride, 64);
     if (!newBuf) throw std::bad_alloc();
 
     if (m_data && m_count > 0) {
         std::memcpy(newBuf, m_data, m_count * m_stride);
     }
-    engine::memory::alignedFree(m_data);
+    engine::memory::fast::alignedFree(m_data);
     m_data     = newBuf;
     m_capacity = newCap;
 }
@@ -169,12 +169,12 @@ void engine::gpu::Mesh::computeBounds() {
     size_t stride    = m_vertexBuffer.stride();
     size_t count     = m_vertexBuffer.count();
 
-    math::Vec3 bMin{1e30f, 1e30f, 1e30f};
-    math::Vec3 bMax{-1e30f, -1e30f, -1e30f};
+    math::fast::Vec3 bMin{1e30f, 1e30f, 1e30f};
+    math::fast::Vec3 bMax{-1e30f, -1e30f, -1e30f};
 
     for (size_t i = 0; i < count; ++i) {
         // Position is always the first field
-        const math::Vec3& p = *reinterpret_cast<const math::Vec3*>(base + i * stride);
+        const math::fast::Vec3& p = *reinterpret_cast<const math::fast::Vec3*>(base + i * stride);
         bMin.x = std::min(bMin.x, p.x);
         bMin.y = std::min(bMin.y, p.y);
         bMin.z = std::min(bMin.z, p.z);
