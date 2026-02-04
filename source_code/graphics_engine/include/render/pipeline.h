@@ -1,208 +1,321 @@
 #pragma once
 
 #include "math/simd_math.h"
-#include "gpu/vertex_manager.h"
 #include "memory/allocator.h"
 #include <vector>
 #include <string>
-#include <functional>
 #include <atomic>
 #include <thread>
-#include <mutex>
+#include <array>
 #include <unordered_map>
+#include <functional>
 
 namespace engine {
 namespace render {
+namespace fast {
 
-using namespace engine::math;
-using namespace engine::gpu;
-
-// ═══════════════════════════════════════════════
-// Material IDs
-// ═══════════════════════════════════════════════
-using MaterialHandle = uint32_t;
-constexpr MaterialHandle InvalidMaterial = 0;
-
+using namespace engine::math::fast;
 
 // ═══════════════════════════════════════════════
-// Light Models
-// ═══════════════════════════════════════════════
-enum class LightType : uint8_t { Directional, Point, Spot };
-
-struct Light {
-    LightType type          = LightType::Directional;
-    Vec3      position      = Vec3::zero();
-    Vec3      direction     = Vec3(0.f, -1.f, 0.f);  // directional / spot
-    Vec3      color         = Vec3::one();
-    float     intensity     = 1.f;
-    float     range         = 10.f;                   // point / spot
-    float     spotAngle     = radians(45.f);          // half-angle (radians)
-    float     spotSoftness  = 0.2f;                   // falloff softness
-    bool      castsShadow   = true;
-};
-
-// PBR material parameters
-struct PBRMaterial {
-    Vec3  albedo        = {0.8f, 0.8f, 0.8f};
-    float metallic      = 0.0f;
-    float roughness     = 0.5f;
-    float emissiveScale = 0.0f;
-    Vec3  emissiveColor = Vec3::zero();
-    float aoScale       = 1.0f;
-    // Texture handles would go here in a full engine
-};
-
-// ═══════════════════════════════════════════════
-// Scene Graph Node
+// Handles (type-safe indices)
 // ═══════════════════════════════════════════════
 using NodeHandle = uint32_t;
+using MeshHandle = uint32_t;
+using MaterialHandle = uint32_t;
+using ShaderHandle = uint32_t;
+
 constexpr NodeHandle InvalidNode = 0;
+constexpr MeshHandle InvalidMesh = 0;
+constexpr MaterialHandle InvalidMaterial = 0;
 
-struct SceneNode {
-    // Local transform components
-    Vec3  position  = Vec3::zero();
-    Vec3  rotation  = Vec3::zero();    // Euler angles (radians)
-    Vec3  scale     = Vec3::one();
-
-    // Computed world transform (updated during scene graph traversal)
-    Mat4  localTransform  = Mat4::identity();
-    Mat4  worldTransform  = Mat4::identity();
-
-    // Graph structure
-    NodeHandle parent   = InvalidNode;
-    std::vector<NodeHandle> children;
-
-    // Payload
-    MeshHandle     mesh     = InvalidMesh;
-    MaterialHandle material = InvalidMaterial;
-    bool           visible  = true;
-    std::string    name;
-
-    // Dirty flag — only recompute world transform if something changed
-    bool           dirty    = true;
+// ═══════════════════════════════════════════════
+// Data-Oriented Scene Graph (Structure of Arrays)
+// Cache-friendly layout for batch processing
+// ═══════════════════════════════════════════════
+struct alignas(64) SceneGraphSoA {
+    static constexpr size_t MAX_NODES = 65536;
+    
+    // Transform components (hot data - accessed every frame)
+    alignas(64) std::array<Vec3, MAX_NODES> positions;
+    alignas(64) std::array<Vec3, MAX_NODES> rotations;   // Euler angles
+    alignas(64) std::array<Vec3, MAX_NODES> scales;
+    
+    // Computed transforms (updated during traversal)
+    alignas(64) std::array<Mat4, MAX_NODES> localTransforms;
+    alignas(64) std::array<Mat4, MAX_NODES> worldTransforms;
+    
+    // Hierarchy (cold data - rarely changes)
+    alignas(64) std::array<NodeHandle, MAX_NODES> parents;
+    alignas(64) std::array<uint16_t, MAX_NODES> firstChild;
+    alignas(64) std::array<uint16_t, MAX_NODES> nextSibling;
+    alignas(64) std::array<uint8_t, MAX_NODES> childCount;
+    
+    // Render data
+    alignas(64) std::array<MeshHandle, MAX_NODES> meshes;
+    alignas(64) std::array<MaterialHandle, MAX_NODES> materials;
+    
+    // Flags (packed for cache efficiency)
+    alignas(64) std::array<uint8_t, MAX_NODES> flags;  // bit 0: dirty, bit 1: visible
+    
+    std::atomic<uint32_t> nodeCount{0};
+    
+    static constexpr uint8_t FLAG_DIRTY = 0x01;
+    static constexpr uint8_t FLAG_VISIBLE = 0x02;
+    
+    void clear() {
+        nodeCount.store(0, std::memory_order_release);
+    }
+    
+    bool isDirty(uint32_t idx) const { return flags[idx] & FLAG_DIRTY; }
+    bool isVisible(uint32_t idx) const { return flags[idx] & FLAG_VISIBLE; }
+    void setDirty(uint32_t idx, bool v) { 
+        if (v) flags[idx] |= FLAG_DIRTY; 
+        else flags[idx] &= ~FLAG_DIRTY; 
+    }
+    void setVisible(uint32_t idx, bool v) { 
+        if (v) flags[idx] |= FLAG_VISIBLE; 
+        else flags[idx] &= ~FLAG_VISIBLE; 
+    }
 };
 
 
 // ═══════════════════════════════════════════════
-// Draw Call  — what gets submitted to the GPU
+// Frustum Planes (SIMD-friendly layout)
 // ═══════════════════════════════════════════════
-struct DrawCall {
-    MeshHandle     mesh;
+struct alignas(64) FrustumPlanes {
+    // Each plane: xyz = normal, w = distance
+    Vec4 planes[6];  // Left, Right, Bottom, Top, Near, Far
+};
+
+
+// ═══════════════════════════════════════════════
+// AABB Storage (SoA for batch culling)
+// ═══════════════════════════════════════════════
+struct alignas(64) AABBStorage {
+    static constexpr size_t MAX_AABBS = 65536;
+    
+    alignas(64) std::array<Vec3, MAX_AABBS> mins;
+    alignas(64) std::array<Vec3, MAX_AABBS> maxs;
+    
+    std::atomic<uint32_t> count{0};
+};
+
+
+// ═══════════════════════════════════════════════
+// Draw Call (cache-line optimized)
+// ═══════════════════════════════════════════════
+struct alignas(64) DrawCall {
+    MeshHandle mesh;
     MaterialHandle material;
-    Mat4           worldTransform;
-    Mat4           normalMatrix;     // inverse-transpose of 3x3
-    uint32_t       instanceCount = 1;
-    // Instancing data pointer (world transforms for each instance)
-    const Mat4*    instanceTransforms = nullptr;
+    uint32_t instanceCount;
+    uint32_t firstInstance;
+    // World transform stored in instance buffer
 };
 
-// Batch: a group of draw calls that share the same material
-// (allows state-change minimization)
 struct DrawBatch {
     MaterialHandle material;
-    std::vector<DrawCall> calls;
+    uint32_t firstDrawCall;
+    uint32_t drawCallCount;
 };
 
 
 // ═══════════════════════════════════════════════
-// Render Pipeline
+// Instance Data (for GPU instancing)
 // ═══════════════════════════════════════════════
-class RenderPipeline {
+struct alignas(64) InstanceData {
+    Mat4 worldTransform;
+    Mat4 normalMatrix;
+};
+
+
+// ═══════════════════════════════════════════════
+// Visibility Results (bit-packed)
+// ═══════════════════════════════════════════════
+struct VisibilityBuffer {
+    static constexpr size_t MAX_OBJECTS = 65536;
+    alignas(64) std::array<uint64_t, MAX_OBJECTS / 64> bits;
+    
+    void clear() {
+        std::memset(bits.data(), 0, bits.size() * sizeof(uint64_t));
+    }
+    
+    bool isVisible(uint32_t idx) const {
+        return (bits[idx / 64] >> (idx % 64)) & 1;
+    }
+    
+    void setVisible(uint32_t idx, bool v) {
+        if (v) bits[idx / 64] |= (1ULL << (idx % 64));
+        else bits[idx / 64] &= ~(1ULL << (idx % 64));
+    }
+    
+    // Count visible objects using popcount
+    uint32_t countVisible() const {
+        uint32_t count = 0;
+        for (auto word : bits) {
+            count += __builtin_popcountll(word);
+        }
+        return count;
+    }
+};
+
+
+// ═══════════════════════════════════════════════
+// Frame Statistics
+// ═══════════════════════════════════════════════
+struct alignas(64) FrameStats {
+    std::atomic<uint32_t> totalNodes{0};
+    std::atomic<uint32_t> culledNodes{0};
+    std::atomic<uint32_t> visibleNodes{0};
+    std::atomic<uint32_t> drawCalls{0};
+    std::atomic<uint32_t> instancesDrawn{0};
+    std::atomic<uint64_t> transformUpdateUs{0};  // microseconds
+    std::atomic<uint64_t> frustumCullUs{0};
+    std::atomic<uint64_t> drawBuildUs{0};
+    
+    void reset() {
+        totalNodes.store(0, std::memory_order_relaxed);
+        culledNodes.store(0, std::memory_order_relaxed);
+        visibleNodes.store(0, std::memory_order_relaxed);
+        drawCalls.store(0, std::memory_order_relaxed);
+        instancesDrawn.store(0, std::memory_order_relaxed);
+        transformUpdateUs.store(0, std::memory_order_relaxed);
+        frustumCullUs.store(0, std::memory_order_relaxed);
+        drawBuildUs.store(0, std::memory_order_relaxed);
+    }
+};
+
+
+// ═══════════════════════════════════════════════
+// High-Performance Render Pipeline
+// ═══════════════════════════════════════════════
+class FastRenderPipeline {
 public:
-    static RenderPipeline& instance();
-
-    // ── Scene Management ──
-    NodeHandle     createNode(const std::string& name = "");
-    void           destroyNode(NodeHandle handle);
-    SceneNode*     getNode(NodeHandle handle);
-    void           setParent(NodeHandle child, NodeHandle parent);
-
-    // ── Light Management ──
-    void           addLight(const Light& light);
-    void           clearLights();
-    const std::vector<Light>& lights() const { return m_lights; }
-
-    // ── Material ──
-    MaterialHandle createMaterial(const PBRMaterial& mat);
-
+    static FastRenderPipeline& instance();
+    
+    // ── Node Management ──
+    NodeHandle createNode();
+    void destroyNode(NodeHandle handle);
+    
+    void setPosition(NodeHandle handle, const Vec3& pos);
+    void setRotation(NodeHandle handle, const Vec3& rot);
+    void setScale(NodeHandle handle, const Vec3& scale);
+    void setMesh(NodeHandle handle, MeshHandle mesh);
+    void setMaterial(NodeHandle handle, MaterialHandle material);
+    void setParent(NodeHandle child, NodeHandle parent);
+    void setVisible(NodeHandle handle, bool visible);
+    
     // ── Camera ──
-    void           setCamera(const Vec3& eye, const Vec3& target, const Vec3& up,
-                             float fovDeg, float aspect, float nearP, float farP);
-    const Mat4&    viewMatrix()       const { return m_viewMatrix; }
-    const Mat4&    projectionMatrix() const { return m_projMatrix; }
-
-    // ── Per-Frame Pipeline ──
-    // 1. Update scene graph (recompute world transforms)
-    void           updateSceneGraph();
-
-    // 2. Frustum culling — removes invisible nodes
-    void           frustumCull();
-
-    // 3. Build draw calls + batch by material
-    void           buildDrawCalls();
-
-    // 4. Sort batches (by material to minimize state changes)
-    void           sortBatches();
-
-    // 5. Submit — multithreaded draw call preparation
-    void           submit();
-
+    void setCamera(const Vec3& eye, const Vec3& target, const Vec3& up,
+                   float fovDeg, float aspect, float nearP, float farP);
+    
+    // ── Per-Frame Pipeline (all microsecond-optimized) ──
+    
+    // 1. Update transforms - parallel, SIMD batched
+    void updateTransforms();
+    
+    // 2. Frustum culling - SIMD batch test
+    void frustumCull();
+    
+    // 3. Build draw calls - sort-free batching
+    void buildDrawCalls();
+    
+    // 4. Submit - issue draw calls
+    void submit();
+    
+    // Full frame (convenience)
+    void renderFrame();
+    
     // ── Stats ──
-    struct FrameStats {
-        uint32_t totalNodes       = 0;
-        uint32_t culledNodes      = 0;
-        uint32_t visibleNodes     = 0;
-        uint32_t totalDrawCalls   = 0;
-        uint32_t batchedDrawCalls = 0;  // after instancing
-        uint32_t totalBatches     = 0;
-        uint64_t drawCallsIssued  = 0;  // lifetime
-    };
     const FrameStats& stats() const { return m_stats; }
-
-    // Worker thread count
+    
+    // ── Configuration ──
     void setThreadCount(unsigned count);
-    unsigned threadCount() const { return m_threadCount; }
-
+    
 private:
-    RenderPipeline() = default;
-
-    // ── Scene Graph ──
-    std::unordered_map<NodeHandle, SceneNode> m_nodes;
-    NodeHandle m_nextNode = 1;
-    std::vector<NodeHandle> m_rootNodes;     // nodes with no parent
-    std::vector<NodeHandle> m_visibleNodes;  // post-culling
-
-    // ── Lights ──
-    std::vector<Light> m_lights;
-
-    // ── Materials ──
-    std::unordered_map<MaterialHandle, PBRMaterial> m_materials;
-    MaterialHandle m_nextMaterial = 1;
-
+    FastRenderPipeline();
+    
+    // ── Transform Update (parallel) ──
+    void updateTransformsRange(uint32_t start, uint32_t end, const Mat4& parentWorld);
+    void updateTransformsSIMD(uint32_t start, uint32_t end);
+    
+    // ── Frustum extraction ──
+    void extractFrustumPlanes();
+    
+    // ── Scene Data ──
+    SceneGraphSoA m_sceneGraph;
+    AABBStorage m_aabbs;
+    
     // ── Camera ──
-    Mat4  m_viewMatrix;
-    Mat4  m_projMatrix;
-    Vec3  m_cameraPos;
-
+    Mat4 m_viewMatrix;
+    Mat4 m_projMatrix;
+    Mat4 m_viewProjMatrix;
+    Vec3 m_cameraPos;
+    FrustumPlanes m_frustum;
+    
+    // ── Visibility ──
+    VisibilityBuffer m_visibility;
+    
     // ── Draw Calls ──
-    std::vector<DrawCall>  m_drawCalls;
+    std::vector<DrawCall> m_drawCalls;
     std::vector<DrawBatch> m_batches;
-
-    // ── Frustum planes (6 planes, normal + distance) ──
-    struct Plane { Vec3 normal; float dist; };
-    Plane m_frustumPlanes[6];
-    void  computeFrustumPlanes();
-    bool  aabbInsideFrustum(const Vec3& min, const Vec3& max) const;
-
-    // ── Scene graph traversal ──
-    void updateNode(NodeHandle handle, const Mat4& parentWorld);
-
-    // ── Multithreading ──
-    unsigned m_threadCount = 4;
-
+    std::vector<InstanceData> m_instanceData;
+    std::vector<NodeHandle> m_visibleNodes;
+    
+    // ── Threading ──
+    unsigned m_threadCount{4};
+    
     // ── Stats ──
     FrameStats m_stats;
+    
+    // ── Allocators ──
+    memory::fast::ThreadLocalArena m_frameArena{8 * 1024 * 1024};  // 8MB per frame
 };
 
+
+// ═══════════════════════════════════════════════
+// High-Resolution Timer for Microsecond Measurement
+// ═══════════════════════════════════════════════
+class MicrosecondTimer {
+    using Clock = std::chrono::high_resolution_clock;
+    Clock::time_point m_start;
+    
+public:
+    void start() { m_start = Clock::now(); }
+    
+    uint64_t elapsedUs() const {
+        return std::chrono::duration_cast<std::chrono::microseconds>(
+            Clock::now() - m_start
+        ).count();
+    }
+    
+    double elapsedMs() const {
+        return std::chrono::duration<double, std::milli>(
+            Clock::now() - m_start
+        ).count();
+    }
+};
+
+
+// ═══════════════════════════════════════════════
+// Parallel Job System (for transform updates)
+// ═══════════════════════════════════════════════
+class ParallelJobSystem {
+public:
+    using Job = std::function<void()>;
+    
+    static ParallelJobSystem& instance();
+    
+    void setThreadCount(unsigned count);
+    
+    // Submit jobs and wait for completion
+    void parallelFor(size_t count, size_t batchSize, 
+                     const std::function<void(size_t start, size_t end)>& func);
+    
+private:
+    unsigned m_threadCount{4};
+    std::vector<std::thread> m_threads;
+};
+
+} // namespace fast
 } // namespace render
 } // namespace engine

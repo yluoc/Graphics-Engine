@@ -27,38 +27,38 @@ enum class VertexFormatType : uint8_t {
 
 // ── Position only (debug / wireframe) ──
 struct VertexPosition {
-    math::Vec3 pos;
-    static constexpr size_t Stride = sizeof(math::Vec3);  // 12 bytes
+    math::fast::Vec3 pos;
+    static constexpr size_t Stride = sizeof(math::fast::Vec3);  // 12 bytes
 };
 
 // ── Position + Normal ──
 struct VertexPositionNormal {
-    math::Vec3 pos;
-    math::Vec3 normal;
+    math::fast::Vec3 pos;
+    math::fast::Vec3 normal;
     static constexpr size_t Stride = 24;
 };
 
 // ── Full mesh vertex ──
 struct VertexPositionNormalUV {
-    math::Vec3 pos;
-    math::Vec3 normal;
-    math::Vec2 uv;
+    math::fast::Vec3 pos;
+    math::fast::Vec3 normal;
+    math::fast::Vec2 uv;
     static constexpr size_t Stride = 32;
 };
 
 // ── Colored vertex (particles, debug) ──
 struct VertexPositionColor {
-    math::Vec3 pos;
-    math::Vec4 color;
+    math::fast::Vec3 pos;
+    math::fast::Vec4 color;
     static constexpr size_t Stride = 28;
 };
 
 // ── PBR vertex with tangent ──
 struct VertexPBR {
-    math::Vec3 pos;
-    math::Vec3 normal;
-    math::Vec2 uv;
-    math::Vec3 tangent;
+    math::fast::Vec3 pos;
+    math::fast::Vec3 normal;
+    math::fast::Vec2 uv;
+    math::fast::Vec3 tangent;
     static constexpr size_t Stride = 44;
 };
 
@@ -182,8 +182,8 @@ struct MeshDescriptor {
     std::string        name;
     VertexFormatType   vertexFormat;
     PrimitiveType      primitiveType = PrimitiveType::Triangles;
-    math::Vec3         boundsMin;
-    math::Vec3         boundsMax;
+    math::fast::Vec3         boundsMin;
+    math::fast::Vec3         boundsMax;
 };
 
 class Mesh {
