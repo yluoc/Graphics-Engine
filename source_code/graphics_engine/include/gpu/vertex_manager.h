@@ -18,11 +18,11 @@ namespace gpu {
 // the GPU can consume it with minimal padding / wasted bandwidth.
 // ═══════════════════════════════════════════════
 enum class VertexFormatType : uint8_t {
-    Position,          // Vec3              (12 bytes)
-    PositionNormal,    // Vec3 + Vec3       (24 bytes)
-    PositionNormalUV,  // Vec3 + Vec3 + Vec2 (32 bytes)  ← standard mesh vertex
-    PositionColor,     // Vec3 + Vec4       (28 bytes)
-    PositionNormalUVTangent // Vec3 + Vec3 + Vec2 + Vec3 (44 bytes) ← PBR vertex
+    Position,          // Vec3                      (16 bytes)
+    PositionNormal,    // Vec3 + Vec3               (32 bytes)
+    PositionNormalUV,  // Vec3 + Vec3 + Vec2        (48 bytes)  ← standard mesh vertex
+    PositionColor,     // Vec3 + Vec4               (32 bytes)
+    PositionNormalUVTangent // Vec3 + Vec3 + Vec2 + Vec3 (64 bytes) ← PBR vertex
 };
 
 // ── Position only (debug / wireframe) ──
@@ -35,7 +35,7 @@ struct VertexPosition {
 struct VertexPositionNormal {
     math::fast::Vec3 pos;
     math::fast::Vec3 normal;
-    static constexpr size_t Stride = 24;
+    static constexpr size_t Stride = 32;
 };
 
 // ── Full mesh vertex ──
@@ -43,14 +43,14 @@ struct VertexPositionNormalUV {
     math::fast::Vec3 pos;
     math::fast::Vec3 normal;
     math::fast::Vec2 uv;
-    static constexpr size_t Stride = 32;
+    static constexpr size_t Stride = 48;
 };
 
 // ── Colored vertex (particles, debug) ──
 struct VertexPositionColor {
     math::fast::Vec3 pos;
     math::fast::Vec4 color;
-    static constexpr size_t Stride = 28;
+    static constexpr size_t Stride = 32;
 };
 
 // ── PBR vertex with tangent ──
@@ -59,7 +59,7 @@ struct VertexPBR {
     math::fast::Vec3 normal;
     math::fast::Vec2 uv;
     math::fast::Vec3 tangent;
-    static constexpr size_t Stride = 44;
+    static constexpr size_t Stride = 64;
 };
 
 

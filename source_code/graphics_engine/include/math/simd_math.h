@@ -61,11 +61,11 @@ constexpr float RAD_TO_DEG = 180.0f / PI;
 // Fast math approximations (microsecond-level)
 // ═══════════════════════════════════════════════
 
-// Fast inverse square root (Quake-style, improved)
+// Fast inverse square root
 FORCE_INLINE float fastInvSqrt(float x) {
     float xhalf = 0.5f * x;
     int i = *(int*)&x;
-    i = 0x5f375a86 - (i >> 1);  // Improved magic constant
+    i = 0x5f375a86 - (i >> 1);  // Magic Number
     x = *(float*)&i;
     x = x * (1.5f - xhalf * x * x);  // Newton iteration
     x = x * (1.5f - xhalf * x * x);  // Second iteration for precision
@@ -76,7 +76,7 @@ FORCE_INLINE float fastSqrt(float x) {
     return x * fastInvSqrt(x);
 }
 
-// Fast sin/cos using polynomial approximation (~1e-5 error)
+// Fast sin/cos using polynomial approximation
 FORCE_INLINE float fastSin(float x) {
     // Normalize to [-PI, PI]
     x = x - TWO_PI * std::floor((x + PI) * INV_PI * 0.5f);
@@ -88,7 +88,7 @@ FORCE_INLINE float fastSin(float x) {
         x = -PI - x;
     }
 
-    // 9th-order minimax-style polynomial (tight near PI/2)
+    // tight near PI/2
     float x2 = x * x;
     return x * (1.0f - x2 * (0.16666667f
         - x2 * (0.0083333337f
@@ -116,38 +116,141 @@ FORCE_INLINE float fastAtan2(float y, float x) {
     return r;
 }
 
-
 // ═══════════════════════════════════════════════
-// Vec2 - Basic 2D vector
+// Vec2 - SIMD optimized
 // ═══════════════════════════════════════════════
-struct alignas(8) Vec2 {
-    float x, y;
+struct alignas(16) Vec2 {
+    union {
+        struct { float x, y, _pad0, _pad1; };
+        float data[4];
+#if defined(ENGINE_USE_SSE2) || defined(ENGINE_USE_AVX2) || defined(ENGINE_USE_AVX512)
+        __m128 simd;
+#endif
+    };
 
-    Vec2() : x(0.f), y(0.f) {}
-    Vec2(float x_, float y_) : x(x_), y(y_) {}
-    explicit Vec2(float v) : x(v), y(v) {}
+    Vec2() : x(0.f), y(0.f), _pad0(0.f), _pad1(0.f) {}
+    Vec2(float x_, float y_) : x(x_), y(y_), _pad0(0.f), _pad1(0.f) {}
+    explicit Vec2(float v) : x(v), y(v), _pad0(0.f), _pad1(0.f) {}
 
-    FORCE_INLINE Vec2 operator+(const Vec2& r) const { return {x+r.x, y+r.y}; }
-    FORCE_INLINE Vec2 operator-(const Vec2& r) const { return {x-r.x, y-r.y}; }
-    FORCE_INLINE Vec2 operator*(float s) const { return {x*s, y*s}; }
-    FORCE_INLINE Vec2 operator/(float s) const { float inv=1.f/s; return {x*inv, y*inv}; }
-    FORCE_INLINE Vec2& operator+=(const Vec2& r) { x+=r.x; y+=r.y; return *this; }
-    FORCE_INLINE Vec2& operator-=(const Vec2& r) { x-=r.x; y-=r.y; return *this; }
-    FORCE_INLINE Vec2& operator*=(float s) { x*=s; y*=s; return *this; }
+#if defined(ENGINE_USE_SSE2) || defined(ENGINE_USE_AVX2) || defined(ENGINE_USE_AVX512)
+    Vec2(__m128 v) : simd(v) {}
+    operator __m128() const { return simd; }
+#endif
 
-    FORCE_INLINE float dot(const Vec2& r) const { return x*r.x + y*r.y; }
+    FORCE_INLINE Vec2 operator+(const Vec2& r) const {
+#if defined(ENGINE_USE_SSE2) || defined(ENGINE_USE_AVX2) || defined(ENGINE_USE_AVX512)
+        return Vec2(_mm_add_ps(simd, r.simd));
+#else
+        return {x+r.x, y+r.y};
+#endif
+    }
+
+    FORCE_INLINE Vec2 operator-(const Vec2& r) const {
+#if defined(ENGINE_USE_SSE2) || defined(ENGINE_USE_AVX2) || defined(ENGINE_USE_AVX512)
+        return Vec2(_mm_sub_ps(simd, r.simd));
+#else
+        return {x-r.x, y-r.y};
+#endif
+    }
+
+    FORCE_INLINE Vec2 operator*(float s) const {
+#if defined(ENGINE_USE_SSE2) || defined(ENGINE_USE_AVX2) || defined(ENGINE_USE_AVX512)
+        return Vec2(_mm_mul_ps(simd, _mm_set1_ps(s)));
+#else
+        return {x*s, y*s};
+#endif
+    }
+
+    FORCE_INLINE Vec2 operator/(float s) const {
+        float inv = 1.f/s;
+#if defined(ENGINE_USE_SSE2) || defined(ENGINE_USE_AVX2) || defined(ENGINE_USE_AVX512)
+        return Vec2(_mm_mul_ps(simd, _mm_set1_ps(inv)));
+#else
+        return {x*inv, y*inv};
+#endif
+    }
+
+    FORCE_INLINE Vec2& operator+=(const Vec2& r) {
+#if defined(ENGINE_USE_SSE2) || defined(ENGINE_USE_AVX2) || defined(ENGINE_USE_AVX512)
+        simd = _mm_add_ps(simd, r.simd);
+#else
+        x+=r.x; y+=r.y;
+#endif
+        return *this;
+    }
+
+    FORCE_INLINE Vec2& operator-=(const Vec2& r) {
+#if defined(ENGINE_USE_SSE2) || defined(ENGINE_USE_AVX2) || defined(ENGINE_USE_AVX512)
+        simd = _mm_sub_ps(simd, r.simd);
+#else
+        x-=r.x; y-=r.y;
+#endif
+        return *this;
+    }
+
+    FORCE_INLINE Vec2& operator*=(float s) {
+#if defined(ENGINE_USE_SSE2) || defined(ENGINE_USE_AVX2) || defined(ENGINE_USE_AVX512)
+        simd = _mm_mul_ps(simd, _mm_set1_ps(s));
+#else
+        x*=s; y*=s;
+#endif
+        return *this;
+    }
+
+    FORCE_INLINE float dot(const Vec2& r) const {
+#if defined(ENGINE_USE_SSE4) || defined(ENGINE_USE_AVX2) || defined(ENGINE_USE_AVX512)
+        return _mm_cvtss_f32(_mm_dp_ps(simd, r.simd, 0x31));
+#elif defined(ENGINE_USE_SSE2)
+        __m128 mul = _mm_mul_ps(simd, r.simd);
+        __m128 shuf = _mm_shuffle_ps(mul, mul, _MM_SHUFFLE(1,1,1,1));
+        __m128 sum = _mm_add_ss(mul, shuf);
+        return _mm_cvtss_f32(sum);
+#else
+        return x*r.x + y*r.y;
+#endif
+    }
+
     FORCE_INLINE float lengthSq() const { return dot(*this); }
-    FORCE_INLINE float length() const { return std::sqrt(lengthSq()); }
-    FORCE_INLINE Vec2 normalized() const { float l = length(); return l > 0.f ? *this / l : Vec2(); }
-    FORCE_INLINE void normalize() { float l = length(); if (l > 0.f) { x/=l; y/=l; } }
 
-    static Vec2 zero() { return {0.f, 0.f}; }
-    static Vec2 one() { return {1.f, 1.f}; }
+    FORCE_INLINE float length() const {
+#if defined(ENGINE_USE_SSE4) || defined(ENGINE_USE_AVX2) || defined(ENGINE_USE_AVX512)
+        __m128 dp = _mm_dp_ps(simd, simd, 0x3F);
+        return _mm_cvtss_f32(_mm_sqrt_ss(dp));
+#else
+        return fastSqrt(lengthSq());
+#endif
+    }
+
+    FORCE_INLINE Vec2 normalized() const {
+#if defined(ENGINE_USE_SSE4) || defined(ENGINE_USE_AVX2) || defined(ENGINE_USE_AVX512)
+        __m128 dp = _mm_dp_ps(simd, simd, 0x3F);
+        float l2 = _mm_cvtss_f32(dp);
+        if (l2 > 0.f) {
+            __m128 inv = _mm_rsqrt_ps(dp);
+            // One Newton-Raphson step for better accuracy
+            __m128 y2 = _mm_mul_ps(inv, inv);
+            __m128 half_x_y2 = _mm_mul_ps(_mm_mul_ps(dp, y2), _mm_set1_ps(0.5f));
+            __m128 term = _mm_sub_ps(_mm_set1_ps(1.5f), half_x_y2);
+            inv = _mm_mul_ps(inv, term);
+            return Vec2(_mm_mul_ps(simd, inv));
+        }
+        return Vec2();
+#else
+        float l2 = lengthSq();
+        return l2 > 0.f ? *this * fastInvSqrt(l2) : Vec2();
+#endif
+    }
+
+    FORCE_INLINE void normalize() { *this = normalized(); }
+
+    static Vec2 zero() { return Vec2(0.f, 0.f); }
+    static Vec2 one() { return Vec2(1.f, 1.f); }
 };
 
 
+
 // ═══════════════════════════════════════════════
-// Vec3 - SIMD optimized (16-byte aligned)
+// Vec3 - SIMD optimized
 // ═══════════════════════════════════════════════
 struct alignas(16) Vec3 {
     union {
