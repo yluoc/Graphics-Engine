@@ -63,6 +63,12 @@ static void testVec2() {
     ASSERT_NEAR(e.x, 2.f, 1e-6f, "mul.x");
     ASSERT_NEAR(e.y, 4.f, 1e-6f, "mul.y");
     ASSERT_NEAR(a.dot(b), 11.f, 1e-6f, "dot");
+    ASSERT_NEAR(a.length(), std::sqrt(5.f), 1e-6f, "len");
+    Vec2 n = a.normalized();
+    ASSERT_NEAR(n.length(), 1.f, 1e-5f, "normalized length");
+    ASSERT_TRUE(sizeof(Vec2) == 16, "sizeof Vec2 == 16");
+    ASSERT_TRUE(alignof(Vec2) == 16, "alignof Vec2 == 16");
+    ASSERT_TRUE((reinterpret_cast<uintptr_t>(&a) % 16) == 0, "Vec2 instance aligned");
     PASS();
 }
 
