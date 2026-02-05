@@ -61,12 +61,20 @@ void ParallelJobSystem::setThreadCount(unsigned count) {
 // Node Management
 // ═══════════════════════════════════════════════
 NodeHandle FastRenderPipeline::createNode() {
-    uint32_t idx = m_sceneGraph.nodeCount.fetch_add(1, std::memory_order_acq_rel);
-    if (idx >= SceneGraphSoA::MAX_NODES) {
-        m_sceneGraph.nodeCount.fetch_sub(1, std::memory_order_relaxed);
-        return InvalidNode;
+    uint32_t idx;
+
+    // Reuse a destroyed index if available
+    if (!m_freeIndices.empty()) {
+        idx = m_freeIndices.back();
+        m_freeIndices.pop_back();
+    } else {
+        idx = m_sceneGraph.nodeCount.fetch_add(1, std::memory_order_acq_rel);
+        if (idx >= SceneGraphSoA::MAX_NODES) {
+            m_sceneGraph.nodeCount.fetch_sub(1, std::memory_order_relaxed);
+            return InvalidNode;
+        }
     }
-    
+
     // Initialize node
     m_sceneGraph.positions[idx] = Vec3::zero();
     m_sceneGraph.rotations[idx] = Vec3::zero();
@@ -77,17 +85,20 @@ NodeHandle FastRenderPipeline::createNode() {
     m_sceneGraph.meshes[idx] = InvalidMesh;
     m_sceneGraph.materials[idx] = InvalidMaterial;
     m_sceneGraph.flags[idx] = SceneGraphSoA::FLAG_DIRTY | SceneGraphSoA::FLAG_VISIBLE;
-    
+
     return idx + 1;  // Handle is 1-indexed (0 = invalid)
 }
 
 void FastRenderPipeline::destroyNode(NodeHandle handle) {
     if (handle == InvalidNode) return;
     uint32_t idx = handle - 1;
-    
+
     // Mark as invisible and clear mesh
     m_sceneGraph.flags[idx] = 0;
     m_sceneGraph.meshes[idx] = InvalidMesh;
+
+    // Reclaim index for reuse
+    m_freeIndices.push_back(idx);
 }
 
 void FastRenderPipeline::setPosition(NodeHandle handle, const Vec3& pos) {

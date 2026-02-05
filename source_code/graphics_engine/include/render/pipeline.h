@@ -267,6 +267,9 @@ private:
     // ── Stats ──
     FrameStats m_stats;
     
+    // ── Free list for destroyed node indices ──
+    std::vector<uint32_t> m_freeIndices;
+
     // ── Allocators ──
     memory::fast::ThreadLocalArena m_frameArena{8 * 1024 * 1024};  // 8MB per frame
 };
