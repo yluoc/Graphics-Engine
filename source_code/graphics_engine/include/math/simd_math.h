@@ -12,12 +12,18 @@
 // ─────────────────────────────────────────────
 #if defined(__AVX512F__)
   #define ENGINE_USE_AVX512 1
+  #define ENGINE_USE_AVX2 1
+  #define ENGINE_USE_SSE4 1
+  #define ENGINE_USE_SSE2 1
   #include <immintrin.h>
 #elif defined(__AVX2__)
   #define ENGINE_USE_AVX2 1
+  #define ENGINE_USE_SSE4 1
+  #define ENGINE_USE_SSE2 1
   #include <immintrin.h>
 #elif defined(__SSE4_1__)
   #define ENGINE_USE_SSE4 1
+  #define ENGINE_USE_SSE2 1
   #include <smmintrin.h>
 #elif defined(__SSE2__)
   #define ENGINE_USE_SSE2 1
@@ -64,15 +70,17 @@ constexpr float RAD_TO_DEG = 180.0f / PI;
 // Fast inverse square root
 FORCE_INLINE float fastInvSqrt(float x) {
     float xhalf = 0.5f * x;
-    int i = *(int*)&x;
+    int32_t i;
+    std::memcpy(&i, &x, sizeof(i));
     i = 0x5f375a86 - (i >> 1);  // Magic Number
-    x = *(float*)&i;
+    std::memcpy(&x, &i, sizeof(x));
     x = x * (1.5f - xhalf * x * x);  // Newton iteration
     x = x * (1.5f - xhalf * x * x);  // Second iteration for precision
     return x;
 }
 
 FORCE_INLINE float fastSqrt(float x) {
+    if (UNLIKELY(x <= 0.f)) return 0.f; // zero guard
     return x * fastInvSqrt(x);
 }
 
@@ -341,11 +349,20 @@ struct alignas(16) Vec3 {
     FORCE_INLINE Vec3 normalized() const {
 #if defined(ENGINE_USE_SSE4) || defined(ENGINE_USE_AVX2)
         __m128 dp = _mm_dp_ps(simd, simd, 0x7F);
-        __m128 inv = _mm_rsqrt_ps(dp);
-        return Vec3(_mm_mul_ps(simd, inv));
+        float l2 = _mm_cvtss_f32(dp);
+        if (l2 > 0.f) {
+            __m128 inv = _mm_rsqrt_ps(dp);
+            // Newton-Raphson refinement for better accuracy
+            __m128 y2 = _mm_mul_ps(inv, inv);
+            __m128 half_x_y2 = _mm_mul_ps(_mm_mul_ps(dp, y2), _mm_set1_ps(0.5f));
+            __m128 term = _mm_sub_ps(_mm_set1_ps(1.5f), half_x_y2);
+            inv = _mm_mul_ps(inv, term);
+            return Vec3(_mm_mul_ps(simd, inv));
+        }
+        return Vec3();
 #else
-        float invLen = fastInvSqrt(lengthSq());
-        return *this * invLen;
+        float l2 = lengthSq();
+        return l2 > 0.f ? *this * fastInvSqrt(l2) : Vec3();
 #endif
     }
 
