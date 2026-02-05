@@ -32,17 +32,33 @@ static int s_passed = 0, s_failed = 0;
 
 using Clock = std::chrono::high_resolution_clock;
 
+// Prevent compiler from optimizing away a value
+template<typename T>
+inline void doNotOptimize(T const& value) {
+    asm volatile("" : : "g"(value) : "memory");
+}
+
+// Force compiler to assume memory pointed to by p may be read externally
+inline void escapePointer(void* p) {
+    asm volatile("" : : "g"(p) : "memory");
+}
+
+// Prevent compiler from reordering memory accesses across this barrier
+inline void clobberMemory() {
+    asm volatile("" : : : "memory");
+}
+
 template<typename F>
 double measureUs(F&& func, int iterations = 100) {
     // Warmup
     for (int i = 0; i < 10; ++i) func();
-    
+
     auto start = Clock::now();
     for (int i = 0; i < iterations; ++i) {
         func();
     }
     auto end = Clock::now();
-    
+
     return std::chrono::duration<double, std::micro>(end - start).count() / iterations;
 }
 
@@ -67,33 +83,37 @@ void benchmarkVec3Operations() {
         for (size_t i = 0; i < N; ++i) {
             c[i] = a[i] + b[i];
         }
+        escapePointer(c);
     });
-    RESULT(us, std::to_string(int(N / us)) + "M ops/s");
-    
+    RESULT(us, std::to_string(us > 0.001 ? int(N / us) : 0) + "M ops/s");
+
     BENCHMARK("Vec3 dot (10K)");
     static float dots[N];
     us = measureUs([&]() {
         for (size_t i = 0; i < N; ++i) {
             dots[i] = a[i].dot(b[i]);
         }
+        escapePointer(dots);
     });
-    RESULT(us, std::to_string(int(N / us)) + "M ops/s");
-    
+    RESULT(us, std::to_string(us > 0.001 ? int(N / us) : 0) + "M ops/s");
+
     BENCHMARK("Vec3 cross (10K)");
     us = measureUs([&]() {
         for (size_t i = 0; i < N; ++i) {
             c[i] = a[i].cross(b[i]);
         }
+        escapePointer(c);
     });
-    RESULT(us, std::to_string(int(N / us)) + "M ops/s");
-    
+    RESULT(us, std::to_string(us > 0.001 ? int(N / us) : 0) + "M ops/s");
+
     BENCHMARK("Vec3 normalize (10K)");
     us = measureUs([&]() {
         for (size_t i = 0; i < N; ++i) {
             c[i] = a[i].normalized();
         }
+        escapePointer(c);
     });
-    RESULT(us, std::to_string(int(N / us)) + "M ops/s");
+    RESULT(us, std::to_string(us > 0.001 ? int(N / us) : 0) + "M ops/s");
 }
 
 void benchmarkMat4Operations() {
@@ -114,16 +134,18 @@ void benchmarkMat4Operations() {
         for (size_t i = 0; i < N; ++i) {
             c[i] = a[i] * b[i];
         }
+        escapePointer(c);
     });
-    RESULT(us, std::to_string(int(N / us * 1000)) + "K muls/s");
-    
+    RESULT(us, std::to_string(us > 0.001 ? int(N / us * 1000) : 0) + "K muls/s");
+
     BENCHMARK("Mat4 transpose (1K)");
     us = measureUs([&]() {
         for (size_t i = 0; i < N; ++i) {
             c[i] = a[i].transpose();
         }
+        escapePointer(c);
     });
-    RESULT(us, std::to_string(int(N / us * 1000)) + "K ops/s");
+    RESULT(us, std::to_string(us > 0.001 ? int(N / us * 1000) : 0) + "K ops/s");
 }
 
 void benchmarkBatchTransform() {
@@ -361,37 +383,41 @@ void benchmarkFastMath() {
         for (size_t i = 0; i < N; ++i) {
             outputs[i] = fastInvSqrt(inputs[i]);
         }
+        escapePointer(outputs);
     });
-    RESULT(us, std::to_string(int(N / us)) + "M ops/s");
-    
+    RESULT(us, std::to_string(us > 0.001 ? int(N / us) : 0) + "M ops/s");
+
     BENCHMARK("fastSqrt (10K)");
     us = measureUs([&]() {
         for (size_t i = 0; i < N; ++i) {
             outputs[i] = fastSqrt(inputs[i]);
         }
+        escapePointer(outputs);
     });
-    RESULT(us, std::to_string(int(N / us)) + "M ops/s");
-    
+    RESULT(us, std::to_string(us > 0.001 ? int(N / us) : 0) + "M ops/s");
+
     std::uniform_real_distribution<float> angleDist(-TWO_PI, TWO_PI);
     for (size_t i = 0; i < N; ++i) {
         inputs[i] = angleDist(rng);
     }
-    
+
     BENCHMARK("fastSin (10K)");
     us = measureUs([&]() {
         for (size_t i = 0; i < N; ++i) {
             outputs[i] = fastSin(inputs[i]);
         }
+        escapePointer(outputs);
     });
-    RESULT(us, std::to_string(int(N / us)) + "M ops/s");
-    
+    RESULT(us, std::to_string(us > 0.001 ? int(N / us) : 0) + "M ops/s");
+
     BENCHMARK("fastCos (10K)");
     us = measureUs([&]() {
         for (size_t i = 0; i < N; ++i) {
             outputs[i] = fastCos(inputs[i]);
         }
+        escapePointer(outputs);
     });
-    RESULT(us, std::to_string(int(N / us)) + "M ops/s");
+    RESULT(us, std::to_string(us > 0.001 ? int(N / us) : 0) + "M ops/s");
 }
 
 

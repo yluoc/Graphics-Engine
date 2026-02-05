@@ -113,8 +113,10 @@ private:
     std::string m_name;
 };
 
-// Convenience macro
-#define PROFILE_SECTION(name) engine::profiler::ScopedProfile __prof_##__LINE__(name)
+// Convenience macro (double indirection needed so __LINE__ expands before token paste)
+#define PROFILE_CONCAT_IMPL(a, b) a##b
+#define PROFILE_CONCAT(a, b) PROFILE_CONCAT_IMPL(a, b)
+#define PROFILE_SECTION(name) engine::profiler::ScopedProfile PROFILE_CONCAT(__prof_, __LINE__)(name)
 
 } // namespace profiler
 } // namespace engine
